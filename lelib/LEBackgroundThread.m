@@ -12,7 +12,7 @@
 #import "LELog.h"
 #import "LeNetworkStatus.h"
 
-#define LOGENTRIES_HOST         @"api.grouk.com"//@"data.logentries.com" @"192.168.1.18"//
+#define LOGENTRIES_HOST         @"logs.grouk.com"//@"data.logentries.com" @"192.168.1.18"//
 #define LOGENTRIES_USE_TLS      0
 #if LOGENTRIES_USE_TLS
 #define LOGENTRIES_PORT         9822
@@ -34,6 +34,7 @@
 
 @property (nonatomic, assign) FILE* inputFile;
 @property (nonatomic, strong) NSOutputStream* outputSocketStream;
+@property (nonatomic, strong) NSInputStream* inputSocketStream;
 @property (nonatomic, strong) NSTimer* retryTimer;
 @property (nonatomic, strong) LeNetworkStatus* networkStatus;
 
@@ -54,18 +55,27 @@
 - (void)initNetworkCommunication
 {
     CFWriteStreamRef writeStream;
-    CFStreamCreatePairWithSocketToHost(NULL, (CFStringRef)LOGENTRIES_HOST, LOGENTRIES_PORT, NULL, &writeStream);
+    CFReadStreamRef readStream;
+    CFStreamCreatePairWithSocketToHost(NULL, (CFStringRef)LOGENTRIES_HOST, LOGENTRIES_PORT, &readStream, &writeStream);
     
     self.outputSocketStream = (__bridge_transfer NSOutputStream *)writeStream;
+    self.inputSocketStream = (__bridge_transfer NSInputStream *)readStream;
     
 #if LOGENTRIES_USE_TLS
     [self.outputSocketStream setProperty:(__bridge id)kCFStreamSocketSecurityLevelNegotiatedSSL
+                                  forKey:(__bridge id)kCFStreamPropertySocketSecurityLevel];
+    
+    [self.inputSocketStream setProperty:(__bridge id)kCFStreamSocketSecurityLevelNegotiatedSSL
                                   forKey:(__bridge id)kCFStreamPropertySocketSecurityLevel];
 #endif
     
     self.outputSocketStream.delegate = self;
     [self.outputSocketStream scheduleInRunLoop:[NSRunLoop currentRunLoop] forMode:NSDefaultRunLoopMode];
     [self.outputSocketStream open];
+    
+    self.inputSocketStream.delegate = self;
+    [self.inputSocketStream scheduleInRunLoop:[NSRunLoop currentRunLoop] forMode:NSDefaultRunLoopMode];
+    [self.inputSocketStream open];
     
 }
 
@@ -115,8 +125,31 @@
     [self checkConnection];
 }
 
-- (void)stream:(NSStream * __attribute__((unused)))aStream handleEvent:(NSStreamEvent)eventCode
-{
+- (void)handleInputStreamEvent:(NSStreamEvent)eventCode{
+    if (eventCode & NSStreamEventOpenCompleted){
+        LE_DEBUG(@"Socket event NSStreamEventOpenCompleted 4 inputStream");
+
+    }
+    if (eventCode & NSStreamEventErrorOccurred){
+        LE_DEBUG(@"Socket event NSStreamEventErrorOccurred 4 inputStream");
+
+    }
+    if (eventCode & NSStreamEventHasBytesAvailable){
+        LE_DEBUG(@"Socket event NSStreamEventHasSpaceAvailable 4 inputStream");
+        char buffer[MAXIMUM_LOGENTRY_SIZE];
+        memset(buffer, 0, MAXIMUM_LOGENTRY_SIZE);
+        int len = [self.inputSocketStream read:buffer maxLength:MAXIMUM_LOGENTRY_SIZE];
+        if (len > 0) {
+            NSData *data = [NSData dataWithBytes:buffer length:len];
+            LE_DEBUG(@"inputStream recv: %@", [[NSMutableString alloc] initWithData:data encoding:NSUTF8StringEncoding]);
+        }
+    }
+    
+    if (eventCode) LE_DEBUG(@"inputStream Received event %x", (unsigned int)eventCode);
+}
+
+- (void)handleOutputStreamEvent:(NSStreamEvent)eventCode{
+    
     if (eventCode & NSStreamEventOpenCompleted) {
         LE_DEBUG(@"Socket event NSStreamEventOpenCompleted");
         eventCode = (NSStreamEvent)(eventCode & ~NSStreamEventOpenCompleted);
@@ -132,7 +165,7 @@
         
         self.networkStatus = [LeNetworkStatus new];
         self.networkStatus.delegate = self;
-
+        
         self.retryTimer = [NSTimer scheduledTimerWithTimeInterval:RETRY_TIMEOUT target:self selector:@selector(retryTimerFired:) userInfo:nil repeats:NO];
     }
     
@@ -145,8 +178,20 @@
         }
         [self check];
     }
-
+    
     if (eventCode) LE_DEBUG(@"Received event %x", (unsigned int)eventCode);
+}
+
+- (void)stream:(NSStream * __attribute__((unused)))aStream handleEvent:(NSStreamEvent)eventCode
+{
+    if (aStream == self.inputSocketStream) {
+        [self handleInputStreamEvent:eventCode];
+        
+    }else if (aStream == self.outputSocketStream){
+        [self handleOutputStreamEvent:eventCode];
+        
+    }
+    
 }
 
 - (void)readNextData
@@ -390,6 +435,15 @@
 {
     self.lastLogFileNumber = [fileOrderNumber integerValue];
     [self check];
+}
+
+- (void)stopPoke{
+    if (self.outputSocketStream) {
+        [self.outputSocketStream close];
+        LE_DEBUG(@"outputSocketStream status: %@", @(self.outputSocketStream.streamStatus));
+        //    CFStreamClose
+        self.outputSocketStream = nil;
+    }
 }
 
 - (void)main

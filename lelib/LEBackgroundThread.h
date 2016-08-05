@@ -32,6 +32,9 @@
 
 @property (nonatomic, weak)id<LEObjectEncodeDelegate> encodeDelegate;
 
+//for test
+- (void)stopPoke;
+
 @end
 
 

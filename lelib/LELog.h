@@ -63,6 +63,8 @@
 
 @property (nonatomic, weak) id<LELogEncodeDelegate> encodeDelegate;
 
+-(void)stopLogger;
+
 @end
 
 

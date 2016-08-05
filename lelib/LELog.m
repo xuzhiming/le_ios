@@ -42,6 +42,10 @@ extern char* le_token;
     return self;
 }
 
+-(void)stopLogger{
+    [backgroundThread stopPoke];
+}
+
 -(void)setTokenPackage:(NSData *)tokenPackage{
 //    _tokenPackage = tokenPackage;
     backgroundThread.tokenPackage = tokenPackage;
