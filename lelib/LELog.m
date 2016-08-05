@@ -19,6 +19,12 @@ extern LEBackgroundThread* backgroundThread;
 extern dispatch_queue_t le_write_queue;
 extern char* le_token;
 
+@interface LELog ()<LEObjectEncodeDelegate>
+
+//@property (nonatomic, strong)NSObject *tokenPackage;
+
+@end
+
 @implementation LELog
 
 - (id)init
@@ -31,8 +37,26 @@ extern char* le_token;
 
     le_poke();
 
+    backgroundThread.encodeDelegate = self;
+
     return self;
 }
+
+-(void)setTokenPackage:(NSData *)tokenPackage{
+//    _tokenPackage = tokenPackage;
+    backgroundThread.tokenPackage = tokenPackage;
+}
+
+#pragma mark - LEObjectEncodeDelegate
+-(NSData *)encodeRawData:(NSData *)raw{
+    
+    if ([_encodeDelegate respondsToSelector:@selector(encodeRawData:)]) {
+        return [_encodeDelegate encodeRawData:raw];
+    }
+    
+    return raw;
+}
+
 
 - (void)dealloc
 {

@@ -200,33 +200,53 @@ void le_log(const char* message)
     
 }
 
-void le_write_string(NSString* string)
-{
+void le_log_withToken(const char* message){
     dispatch_sync(le_write_queue, ^{
         
         size_t token_length;
+        
         if(!is_valid_token(le_token,&token_length))
             return ;
         
-        NSUInteger maxLength = MAXIMUM_LOGENTRY_SIZE - token_length - 2; // minus token length, space separator and \n
-        if ([string length] > maxLength) {
+        
+        size_t max_length = MAXIMUM_LOGENTRY_SIZE - token_length - 2; // minus token length, space separator and lf
+        
+        size_t length = strlen(message);
+        if (max_length < length) {
             LE_DEBUG(@"Too large message, it will be truncated");
+            length = max_length;
         }
         
         memcpy(buffer, le_token, token_length);
         buffer[token_length] = ' ';
+        memcpy(buffer + token_length + 1, message, length);
+        
+        size_t total_length = token_length + 1 + length;
+        buffer[total_length++] = '\n';
+        
+        write_buffer(total_length);
+        le_poke();
+    });
+}
 
+void le_write_string(NSString* string)
+{
+    dispatch_sync(le_write_queue, ^{
+     
         NSRange range = {.location = 0, .length = [string length]};
-        
+       
         NSUInteger usedLength = 0;
-        BOOL r = [string getBytes:(buffer + token_length + 1) maxLength:maxLength usedLength:&usedLength encoding:NSUTF8StringEncoding options:NSStringEncodingConversionAllowLossy range:range remainingRange:NULL];
-        
+
+        NSUInteger maxLength = MAXIMUM_LOGENTRY_SIZE - 1; // minus \n
+        if ([string length] > maxLength) {
+            LE_DEBUG(@"Too large message, it will be truncated");
+        }
+        BOOL r = [string getBytes:buffer maxLength:maxLength usedLength:&usedLength encoding:NSUTF8StringEncoding options:NSStringEncodingConversionAllowLossy range:range remainingRange:NULL];
         if (!r) {
             LE_DEBUG(@"Error converting message characters.");
             return;
         }
-        
-        NSUInteger totalLength = token_length + 1 + usedLength;
+        NSUInteger totalLength = 1 + usedLength;
         buffer[totalLength++] = '\n';
         write_buffer((size_t)totalLength);
     });

@@ -18,6 +18,14 @@
 
 @end
 
+@protocol LELogEncodeDelegate <NSObject>
+
+@optional
+
+-(NSData *)encodeRawData:(NSData *)data;
+
+@end
+
 @interface LELog : NSObject
 
 + (LELog*)sharedInstance;
@@ -48,6 +56,12 @@
  UIApplicationWillTerminateNotification.
  */
 @property (nonatomic, assign) BOOL logApplicationLifecycleNotifications;
+
+
+//custom token string
+-(void)setTokenPackage:(NSData *)tokenPackage;
+
+@property (nonatomic, weak) id<LELogEncodeDelegate> encodeDelegate;
 
 @end
 

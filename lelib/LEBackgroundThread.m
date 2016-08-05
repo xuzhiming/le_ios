@@ -12,12 +12,12 @@
 #import "LELog.h"
 #import "LeNetworkStatus.h"
 
-#define LOGENTRIES_HOST         @"data.logentries.com"
-#define LOGENTRIES_USE_TLS      1
+#define LOGENTRIES_HOST         @"api.grouk.com"//@"data.logentries.com" @"192.168.1.18"//
+#define LOGENTRIES_USE_TLS      0
 #if LOGENTRIES_USE_TLS
-#define LOGENTRIES_PORT         443
+#define LOGENTRIES_PORT         9822
 #else
-#define LOGENTRIES_PORT         80
+#define LOGENTRIES_PORT         9821
 #endif
 
 #define RETRY_TIMEOUT           60.0
@@ -45,6 +45,8 @@
 // TRUE when last written character was '\n'
 @property (nonatomic, assign) BOOL logentryCompleted;
 
+@property (nonatomic, assign) BOOL bNeedSendAuth;
+
 @end
 
 @implementation LEBackgroundThread
@@ -64,6 +66,24 @@
     self.outputSocketStream.delegate = self;
     [self.outputSocketStream scheduleInRunLoop:[NSRunLoop currentRunLoop] forMode:NSDefaultRunLoopMode];
     [self.outputSocketStream open];
+    
+}
+
+- (void)sendAuthHeader{
+    if (self.tokenPackage) {
+        if (self.outputSocketStream) {
+            self.bNeedSendAuth = NO;
+
+            int len = self.tokenPackage.length;
+            char buffer[len];
+            memset(buffer, 0, len);
+            memcpy(buffer, self.tokenPackage.bytes, len);
+//            buffer[len] = '\n';
+            NSUInteger ret = [self.outputSocketStream write:(const uint8_t *)buffer maxLength:len];
+            LE_DEBUG(@"token write ret:%@", @(ret));
+        }
+    }
+    
 }
 
 - (void)checkConnection
@@ -101,6 +121,7 @@
         LE_DEBUG(@"Socket event NSStreamEventOpenCompleted");
         eventCode = (NSStreamEvent)(eventCode & ~NSStreamEventOpenCompleted);
         self.logentryCompleted = YES;
+        self.bNeedSendAuth = YES;
     }
     
     if (eventCode & NSStreamEventErrorOccurred) {
@@ -119,7 +140,9 @@
         
         LE_DEBUG(@"Socket event NSStreamEventHasSpaceAvailable");
         eventCode = (NSStreamEvent)(eventCode & ~NSStreamEventHasSpaceAvailable);
-        
+        if (self.bNeedSendAuth) {
+            [self sendAuthHeader];
+        }
         [self check];
     }
 
@@ -287,7 +310,12 @@
         }
     }
     
-	NSInteger written = [self.outputSocketStream write:output_buffer + output_buffer_position maxLength:maxLength];
+    NSData *data = [NSData dataWithBytes:output_buffer+output_buffer_position length:maxLength-1];
+    if ([self.encodeDelegate respondsToSelector:@selector(encodeRawData:)]) {
+        data = [self.encodeDelegate encodeRawData:data];
+    }
+    
+	NSInteger written = [self.outputSocketStream write:[data bytes] maxLength:data.length];
     LE_DEBUG(@"Send out %ld bytes", (long)written);
     if (written == -1) {
         LE_DEBUG(@"write error occured %@", self.outputSocketStream.streamError);

@@ -9,6 +9,8 @@
 #import <Foundation/Foundation.h>
 
 
+@protocol LEObjectEncodeDelegate;
+
 /*
  This is a background thread which reads log files and sends it 
  to the server. You should not use this class directly.
@@ -24,5 +26,17 @@
  This method is invoked by le_poke() when new data are available.
  */
 - (void)poke:(NSNumber*)lastLogFileNumber;
+
+
+@property (nonatomic, strong) NSData* tokenPackage;
+
+@property (nonatomic, weak)id<LEObjectEncodeDelegate> encodeDelegate;
+
+@end
+
+
+@protocol LEObjectEncodeDelegate <NSObject>
+
+-(NSData *)encodeRawData:(NSData *)raw;
 
 @end
